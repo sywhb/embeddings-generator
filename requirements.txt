@@ -1,0 +1,8 @@
+Flask==2.1.0
+gunicorn==20.1.0
+numpy==1.22.4
+pandas==1.5.3
+langchain==0.0.249
+transformers==4.30.1
+sentence_transformers==2.2.2
+markdownify==0.11.6
