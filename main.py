@@ -1,6 +1,5 @@
 import os
 
-import pandas as pd
 from flask import Flask, request
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -12,6 +11,7 @@ model_name = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 model_kwargs = {'device': os.environ.get('DEVICE', 'cpu')}
 encode_kwargs = {'normalize_embeddings': os.environ.get(
     'NORMALIZE_EMBEDDINGS', True)}
+
 embeddings_service = HuggingFaceEmbeddings(
     model_name=model_name,
     model_kwargs=model_kwargs,
@@ -37,7 +37,7 @@ def split_text(text, is_html=False):
     content = html_to_markdown(text) if is_html else text
     splits = text_splitter.create_documents([content])
     for s in splits:
-        r = {"id": id, "content": s.page_content}
+        r = {"content": s.page_content}
         chunked.append(r)
 
     return chunked
@@ -48,14 +48,13 @@ def split_text(text, is_html=False):
 def generate_embeddings(chunked):
     batch_size = 5
     for i in range(0, len(chunked), batch_size):
-        request = [x["content"] for x in chunked[i: i + batch_size]]
-        response = embeddings_service.embed_documents(request)
+        texts = [x["content"] for x in chunked[i: i + batch_size]]
+        embeddings = embeddings_service.embed_documents(texts)
         # Store the retrieved vector embeddings for each chunk back.
-        for x, e in zip(chunked[i: i + batch_size], response):
+        for x, e in zip(chunked[i: i + batch_size], embeddings):
             x["embedding"] = e
 
-    # Store the generated embeddings in a pandas dataframe.
-    return pd.DataFrame(chunked)
+    return chunked[0]["embedding"]
 
 
 def generate_embeded_query(query):
@@ -63,24 +62,27 @@ def generate_embeded_query(query):
 
 
 def generate_embedded_text(text, is_html=False):
-    chunked = split_text(text)
-    return generate_embeddings(chunked, is_html)
+    chunked = split_text(text, is_html)
+    return generate_embeddings(chunked)
 
 
 @app.route("/", methods=["POST"])
-def get_embeddings():
+def index():
     # get the request body
     request_body = request.get_json()
     text = request_body["text"]
-    is_html = request_body["is_html"]
-    is_query = request_body["is_query"]
+    is_html = request_body["is_html"] if "is_html" in request_body else False
+    is_query = request_body["is_query"] if "is_query" in request_body else False
 
     # get the embedded text
     embeddings = generate_embeded_query(
         text) if is_query else generate_embedded_text(text, is_html)
 
     # return the response 768 dimensional vector
-    return embeddings.to_json(orient="records")
+    return {
+        "embeddings": embeddings,
+        "model": model_name
+    }
 
 
 if __name__ == "__main__":
