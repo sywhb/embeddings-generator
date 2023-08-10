@@ -1,22 +1,36 @@
 import os
+import time
 
 from flask import Flask, request
-from langchain.embeddings import HuggingFaceEmbeddings
+from google.cloud import aiplatform
+from langchain.embeddings import VertexAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from markdownify import markdownify as md
 
 app = Flask(__name__)
+project_id = os.environ.get("PROJECT_ID", 'omnivore-demo')
+region = os.environ.get("REGION", 'us-west2')
+model_name = 'textembedding-gecko'
 
-model_name = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
-model_kwargs = {'device': os.environ.get('DEVICE', 'cpu')}
-encode_kwargs = {'normalize_embeddings': os.environ.get(
-    'NORMALIZE_EMBEDDINGS', True)}
+# Generate the vector embeddings for each chunk of text.
+# This code snippet may run for a few minutes.
+aiplatform.init(project=f"{project_id}", location=f"{region}")
+embeddings_service = VertexAIEmbeddings()
 
-embeddings_service = HuggingFaceEmbeddings(
-    model_name=model_name,
-    model_kwargs=model_kwargs,
-    encode_kwargs=encode_kwargs
-)
+
+# Helper function to retry failed API requests with exponential backoff.
+def retry_with_backoff(func, *args, retry_delay=5, backoff_factor=2, **kwargs):
+    max_attempts = 10
+    retries = 0
+    for i in range(max_attempts):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            print(f"error: {e}")
+            retries += 1
+            wait = retry_delay * (backoff_factor**retries)
+            print(f"Retry after waiting for {wait} seconds...")
+            time.sleep(wait)
 
 
 # convert html to markdown
@@ -48,10 +62,10 @@ def split_text(text, is_html=False):
 def generate_embeddings(chunked):
     batch_size = 5
     for i in range(0, len(chunked), batch_size):
-        texts = [x["content"] for x in chunked[i: i + batch_size]]
-        embeddings = embeddings_service.embed_documents(texts)
+        request = [x["content"] for x in chunked[i: i + batch_size]]
+        response = retry_with_backoff(embeddings_service.embed_documents, request)
         # Store the retrieved vector embeddings for each chunk back.
-        for x, e in zip(chunked[i: i + batch_size], embeddings):
+        for x, e in zip(chunked[i: i + batch_size], response):
             x["embedding"] = e
 
     return chunked[0]["embedding"]

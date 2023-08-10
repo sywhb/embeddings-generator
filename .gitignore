@@ -2,3 +2,6 @@ __pycache__
 .mypy_cache
 .venv
 .vscode
+.env
+.ipynb_checkpoints
+tmp*
