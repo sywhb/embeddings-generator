@@ -8,8 +8,8 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from markdownify import markdownify as md
 
 app = Flask(__name__)
-project_id = os.environ.get("PROJECT_ID", 'omnivore-demo')
-region = os.environ.get("REGION", 'us-west2')
+project_id = os.environ.get("PROJECT_ID")
+region = os.environ.get("REGION")
 model_name = 'textembedding-gecko'
 
 # Generate the vector embeddings for each chunk of text.
